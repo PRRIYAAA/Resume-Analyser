@@ -33,6 +33,9 @@ Resume Score: <score>/100
 Strengths:
 - ...
 
+Common Mistakes Identified:
+- ...
+
 Detailed Improvement Suggestions:
 1. Resume Structure & Formatting:
 - ...
@@ -54,18 +57,27 @@ Overall Advice:
 
 # ---------------- FUNCTIONS ----------------
 def extract_text(file, filename):
-    if filename.endswith(".pdf"):
-        reader = PdfReader(file)
-        text = ""
-        for page in reader.pages:
-            if page.extract_text():
-                text += page.extract_text()
-        return clean_text(text)
+    try:
+        if filename.endswith(".pdf"):
+            reader = PdfReader(file)
+            text = ""
+            for page in reader.pages:
+                if page.extract_text():
+                    text += page.extract_text()
+            if not text.strip():
+                raise ValueError("No readable text found in PDF. The file might be image-based or corrupted.")
+            return clean_text(text)
 
-    if filename.endswith(".docx"):
-        doc = docx.Document(file)
-        text = "\n".join(p.text for p in doc.paragraphs)
-        return clean_text(text)
+        elif filename.endswith(".docx"):
+            doc = docx.Document(file)
+            text = "\n".join(p.text for p in doc.paragraphs)
+            if not text.strip():
+                raise ValueError("No readable text found in DOCX. The file might be empty or corrupted.")
+            return clean_text(text)
+        else:
+            raise ValueError("Unsupported file format. Please upload PDF or DOCX.")
+    except Exception as e:
+        raise ValueError(f"Error extracting text from {filename}: {str(e)}")
 
 def clean_text(text):
     text = re.sub(r"\s+", " ", text)
@@ -111,14 +123,17 @@ def ats_analysis(resume_text, jd_text):
 
 # -------- AI Resume Feedback --------
 def analyze_resume_llm(resume_text):
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": resume_text}
-        ]
-    )
-    return response.choices[0].message.content
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": resume_text}
+            ]
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        raise ValueError(f"Error analyzing resume with AI: {str(e)}. Please check your OpenAI API key and internet connection.")
 
 # -------- ATS Rewrite Suggestions --------
 def generate_rewrite_suggestions(missing_keywords, resume_text):
@@ -221,67 +236,72 @@ if analyze_btn:
     if uploaded_file is None:
         st.error("⚠️ Please upload a resume to proceed.")
     else:
-        with st.spinner("🔍 Analyzing your resume with AI and ML... Please wait."):
-            resume_text = extract_text(uploaded_file, uploaded_file.name)
-            ai_feedback = analyze_resume_llm(resume_text)
+        try:
+            with st.spinner("🔍 Analyzing your resume with AI and ML... Please wait."):
+                resume_text = extract_text(uploaded_file, uploaded_file.name)
+                ai_feedback = analyze_resume_llm(resume_text)
 
-        st.success("✅ Analysis completed successfully!")
+            st.success("✅ Analysis completed successfully!")
 
-        # Results in Tabs
-        tab1, tab2, tab3 = st.tabs(["📊 AI Feedback", "🤖 ATS Analysis", "✍️ Rewrite Suggestions"])
+            # Results in Tabs
+            tab1, tab2, tab3 = st.tabs(["📊 AI Feedback", "🤖 ATS Analysis", "✍️ Rewrite Suggestions"])
 
-        with tab1:
-            st.markdown("### AI-Powered Resume Evaluation")
-            st.markdown(ai_feedback)
+            with tab1:
+                st.markdown("### AI-Powered Resume Evaluation")
+                st.markdown(ai_feedback)
 
-        with tab2:
-            if job_description.strip():
-                ats = ats_analysis(resume_text, job_description)
-                st.markdown("### ML-Based ATS Matching")
-                
-                # Score Display
-                score_col, status_col = st.columns([1, 2])
-                with score_col:
-                    st.metric("ATS Match Score", f"{ats['ats_score']}%")
-                with status_col:
-                    if ats["ats_score"] < 40:
-                        st.error("🔴 Low ATS Match - Needs Improvement")
-                    elif ats["ats_score"] < 65:
-                        st.warning("🟡 Moderate ATS Match - Room for Enhancement")
-                    else:
-                        st.success("🟢 Strong ATS Match - Great Job!")
-                
-                # Keywords
-                kw_col1, kw_col2 = st.columns(2)
-                with kw_col1:
-                    st.markdown("#### ✅ Matched Keywords")
-                    if ats["matched_keywords"]:
-                        for kw in ats["matched_keywords"]:
-                            st.markdown(f"- {kw}")
-                    else:
-                        st.write("No matches found.")
-                
-                with kw_col2:
-                    st.markdown("#### ❌ Missing Keywords")
-                    if ats["missing_keywords"]:
-                        for kw in ats["missing_keywords"]:
-                            st.markdown(f"- {kw}")
-                    else:
-                        st.write("All keywords matched!")
-            else:
-                st.info("💡 Provide a job description to see ATS analysis.")
+            with tab2:
+                if job_description.strip():
+                    ats = ats_analysis(resume_text, job_description)
+                    st.markdown("### ML-Based ATS Matching")
+                    
+                    # Score Display
+                    score_col, status_col = st.columns([1, 2])
+                    with score_col:
+                        st.metric("ATS Match Score", f"{ats['ats_score']}%")
+                    with status_col:
+                        if ats["ats_score"] < 40:
+                            st.error("🔴 Low ATS Match - Needs Improvement")
+                        elif ats["ats_score"] < 65:
+                            st.warning("🟡 Moderate ATS Match - Room for Enhancement")
+                        else:
+                            st.success("🟢 Strong ATS Match - Great Job!")
+                    
+                    # Keywords
+                    kw_col1, kw_col2 = st.columns(2)
+                    with kw_col1:
+                        st.markdown("#### ✅ Matched Keywords")
+                        if ats["matched_keywords"]:
+                            for kw in ats["matched_keywords"]:
+                                st.markdown(f"- {kw}")
+                        else:
+                            st.write("No matches found.")
+                    
+                    with kw_col2:
+                        st.markdown("#### ❌ Missing Keywords")
+                        if ats["missing_keywords"]:
+                            for kw in ats["missing_keywords"]:
+                                st.markdown(f"- {kw}")
+                        else:
+                            st.write("All keywords matched!")
+                else:
+                    st.info("💡 Provide a job description to see ATS analysis.")
 
-        with tab3:
-            if job_description.strip():
-                ats = ats_analysis(resume_text, job_description)
-                rewrite = generate_rewrite_suggestions(
-                    ats["missing_keywords"],
-                    resume_text
-                )
-                st.markdown("### ATS-Optimized Rewrite Suggestions")
-                st.markdown(rewrite)
-            else:
-                st.info("💡 Provide a job description to get rewrite suggestions.")
+            with tab3:
+                if job_description.strip():
+                    ats = ats_analysis(resume_text, job_description)
+                    rewrite = generate_rewrite_suggestions(
+                        ats["missing_keywords"],
+                        resume_text
+                    )
+                    st.markdown("### ATS-Optimized Rewrite Suggestions")
+                    st.markdown(rewrite)
+                else:
+                    st.info("💡 Provide a job description to get rewrite suggestions.")
+        except ValueError as e:
+            st.error(f"❌ Error: {str(e)}")
+        except Exception as e:
+            st.error(f"❌ An unexpected error occurred: {str(e)}")
 
 st.markdown("---")
 st.caption("🔧 Powered by AI & ML | Designed for Freshers | TF-IDF ATS Matching")
